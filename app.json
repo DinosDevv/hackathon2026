@@ -1,13 +1,18 @@
 {
   "expo": {
-    "name": "hackathon",
-    "slug": "hackathon",
+    "name": "Helper",
+    "slug": "helper",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Helper listens to your question when you press the microphone button.",
+        "NSCameraUsageDescription": "Helper can read a letter or sign you photograph.",
+        "NSPhotoLibraryUsageDescription": "Helper can check a screenshot you choose."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,6 +25,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Helper listens to your question when you press the microphone button."
+        }
+      ]
+    ],
+    "scheme": "helper"
   }
 }
