@@ -15,6 +15,7 @@ export const HelperAnswer = z.object({
   steps: z.array(z.string()),
   draftReply: z.string(),
   tellFamily: z.boolean(),
+  emergency: z.boolean(),
 });
 export type HelperAnswer = z.infer<typeof HelperAnswer>;
 
@@ -48,7 +49,13 @@ Fields:
 - explanation: the spoken answer.
 - steps: numbered actions to take, or an empty list.
 - draftReply: if the user asks you to write or reply to a message, put the ready-to-send text here; otherwise an empty string.
-- tellFamily: true when the user would benefit from letting a trusted family member know (e.g. a likely scam, a money request, something they are anxious about).`;
+- tellFamily: true when the user would benefit from letting a trusted family member know (e.g. a likely scam, a money request, something they are anxious about).
+- emergency: true only when the user, or someone with them, may need urgent help from emergency services right now: a medical emergency (chest pain, trouble breathing, signs of a stroke, a bad fall, heavy bleeding, someone unconscious, an overdose), a fire, a crime happening now or someone threatening them, or talk of ending their life or hurting themselves. Scams, suspicious messages and money worries are NOT emergencies on their own; use tellFamily for those. Otherwise false.
+
+When emergency is true:
+- The app shows a big red button that calls the emergency number, and a button that calls their trusted person. The headline says to get help now (e.g. "Call for help now").
+- In the explanation, calmly tell them to press the red button to call emergency services now. Do not try to diagnose.
+- Steps are only simple things to stay safe until help comes (e.g. "Sit down and stay where you are", "Unlock the front door if you can").`;
 
 function historyToMessages(history: Turn[]): Anthropic.Beta.BetaMessageParam[] {
   return history.map((t) => ({ role: t.role, content: t.text }));
@@ -108,6 +115,7 @@ export async function askHelper(input: AskInput): Promise<HelperAnswer> {
       steps: [],
       draftReply: "",
       tellFamily: true,
+      emergency: false,
     };
   }
   return response.parsed_output;
@@ -116,5 +124,7 @@ export async function askHelper(input: AskInput): Promise<HelperAnswer> {
 // Short text version for Siri Shortcuts, which just speaks whatever we return.
 export function toSpokenText(answer: HelperAnswer): string {
   const steps = answer.steps.map((s, i) => `${i + 1}. ${s}`).join(" ");
-  return [answer.headline + ".", answer.explanation, steps].filter(Boolean).join(" ");
+  // The Shortcut has no call button, so say it out loud.
+  const urgent = answer.emergency ? "If you need urgent help, call your emergency number now." : "";
+  return [urgent, answer.headline + ".", answer.explanation, steps].filter(Boolean).join(" ");
 }

@@ -33,7 +33,8 @@
         {
           "microphonePermission": "Helper listens to your question when you press the microphone button."
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "scheme": "helper"
   }

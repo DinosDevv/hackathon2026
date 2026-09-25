@@ -1,76 +1,66 @@
 import * as Clipboard from "expo-clipboard";
-import { Alert, Linking, View } from "react-native";
+import { useState } from "react";
+import { Platform, StyleSheet, View } from "react-native";
 import { resolveServerUrl } from "../src/api";
-import { BigButton, Card, Screen, Txt } from "../src/components/ui";
+import { OnePressGuide, Step } from "../src/components/OnePressGuide";
+import { BigButton, Card, QuietButton, Screen, SectionTitle, Txt } from "../src/components/ui";
 import { useSettings } from "../src/settings";
 import { colors } from "../src/theme";
 
-function Step({ n, children }: { n: number; children: string }) {
+/** The Shortcut that screenshots whatever app is open and speaks Helper's answer, without opening Helper. */
+function ScreenShortcut() {
+  const { settings } = useSettings();
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const shortcutUrl = `${resolveServerUrl(settings.serverUrl)}/api/shortcut`;
+
+  if (!open) {
+    return <QuietButton icon="phone" label="Extra: help with any screen" onPress={() => setOpen(true)} />;
+  }
   return (
-    <View style={{ flexDirection: "row", gap: 10 }}>
-      <Txt bold color={colors.primary}>
-        {n}.
-      </Txt>
-      <Txt style={{ flex: 1 }}>{children}</Txt>
-    </View>
+    <>
+      <SectionTitle>Extra: help with any screen</SectionTitle>
+      <Card>
+        <Txt>
+          A second shortcut that looks at whatever is on the screen, listens to the question and answers out loud, without
+          opening Helper. Put it on Back Tap if the Action button already opens Helper.
+        </Txt>
+        <Step n={1}>In Shortcuts, tap + and name the new shortcut "Helper, look".</Step>
+        <Step n={2}>Add the actions Take Screenshot, then Dictate Text.</Step>
+        <Step n={3}>
+          Add Get Contents of URL and paste the address below. Set Method to POST and Request Body to Form. Add a File field
+          named "image" set to Screenshot, and a Text field named "question" set to Dictated Text.
+        </Step>
+        <Step n={4}>Add Speak Text and set it to Contents of URL.</Step>
+        <View style={styles.address}>
+          <Txt size="small" style={{ fontFamily: "Courier" }}>
+            {shortcutUrl}
+          </Txt>
+        </View>
+        <BigButton
+          icon={copied ? "check" : "copy"}
+          label={copied ? "Address copied" : "Copy the address"}
+          onPress={async () => {
+            await Clipboard.setStringAsync(shortcutUrl);
+            setCopied(true);
+          }}
+        />
+      </Card>
+    </>
   );
 }
 
-export default function Assistive() {
-  const { settings } = useSettings();
-  const shortcutUrl = `${resolveServerUrl(settings.serverUrl)}/api/shortcut`;
-
+export default function OnePressAccess() {
   return (
-    <Screen>
-      <Txt size="large">
-        Put a Helper button on top of every app. Tap it on any screen, ask your question out loud, and Helper looks at
-        your screen and answers.
-      </Txt>
-      <Txt color={colors.muted}>Ask a family member to do this setup once. It takes about 5 minutes.</Txt>
-
-      <Card>
-        <Txt size="large" bold>
-          Part 1 — Make the "Helper" shortcut
-        </Txt>
-        <Step n={1}>Open the Shortcuts app and tap + to make a new shortcut. Name it "Helper".</Step>
-        <Step n={2}>Add the action "Take Screenshot".</Step>
-        <Step n={3}>Add the action "Dictate Text" (this listens to the question).</Step>
-        <Step n={4}>
-          Add "Get Contents of URL". Paste the address below. Tap the arrow: set Method to POST, Request Body to Form.
-          Add a File field named "image" set to Screenshot, and a Text field named "question" set to Dictated Text.
-        </Step>
-        <Step n={5}>Add "Speak Text" and set it to "Contents of URL".</Step>
-        <Txt bold>Address to paste:</Txt>
-        <Txt size="small" style={{ fontFamily: "Courier" }}>
-          {shortcutUrl}
-        </Txt>
-        <BigButton
-          icon="📋"
-          label="Copy the address"
-          onPress={async () => {
-            await Clipboard.setStringAsync(shortcutUrl);
-            Alert.alert("Copied");
-          }}
-        />
-        <BigButton icon="🧩" label="Open the Shortcuts app" onPress={() => Linking.openURL("shortcuts://").catch(() => {})} />
-      </Card>
-
-      <Card>
-        <Txt size="large" bold>
-          Part 2 — Put it on the floating button
-        </Txt>
-        <Step n={1}>Open Settings → Accessibility → Touch → AssistiveTouch, and turn it on. A round button appears.</Step>
-        <Step n={2}>Under "Custom Actions", choose "Single-Tap" (or "Double-Tap") and pick "Helper" from the Shortcuts list.</Step>
-        <Step n={3}>Now tap the round button on any screen and ask, for example: "Is this message safe?"</Step>
-      </Card>
-
-      <Card>
-        <Txt size="large" bold>
-          Other ways to start Helper
-        </Txt>
-        <Txt>• Back Tap: Settings → Accessibility → Touch → Back Tap → Double Tap → Helper. Then tap the back of the phone twice.</Txt>
-        <Txt>• Siri: say "Hey Siri, Helper".</Txt>
-      </Card>
+    <Screen title="One-press access">
+      <Txt size="large">Set up a button so Helper opens with one press, ready to listen. No need to find the app.</Txt>
+      <Txt color={colors.muted}>For the guardian: this takes about 3 minutes. Do it once, together.</Txt>
+      <OnePressGuide />
+      {Platform.OS === "ios" ? <ScreenShortcut /> : null}
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  address: { backgroundColor: colors.sunken, borderRadius: 12, padding: 12 },
+});

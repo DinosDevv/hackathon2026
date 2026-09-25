@@ -13,6 +13,10 @@ export type Settings = {
   language: Language;
   familyName: string;
   familyPhone: string;
+  /** Empty means: pick the number for the phone's country. */
+  emergencyNumber: string;
+  /** Set the first time Helper is opened from the one-press shortcut, so the setup guide can confirm it works. */
+  shortcutTested: boolean;
   /** Overrides the auto-detected backend address, e.g. a tunnel URL for demos. */
   serverUrl: string;
 };
@@ -26,6 +30,8 @@ export const defaultSettings: Settings = {
   language: "English",
   familyName: "",
   familyPhone: "",
+  emergencyNumber: "",
+  shortcutTested: false,
   serverUrl: "",
 };
 

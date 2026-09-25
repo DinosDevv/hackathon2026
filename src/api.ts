@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { File } from "expo-file-system";
 import type { Verdict } from "./theme";
 
 export type HelperAnswer = {
@@ -8,6 +9,8 @@ export type HelperAnswer = {
   steps: string[];
   draftReply: string;
   tellFamily: boolean;
+  /** Missing on answers saved before this field existed. */
+  emergency?: boolean;
 };
 
 export type Turn = { role: "user" | "assistant"; text: string };
@@ -66,8 +69,8 @@ export async function askHelper(baseUrl: string, req: AskRequest): Promise<Helpe
 
 export async function transcribeAudio(baseUrl: string, uri: string, language: string): Promise<string> {
   const form = new FormData();
-  // React Native's FormData accepts a { uri, name, type } file descriptor.
-  form.append("audio", { uri, name: "question.m4a", type: "audio/m4a" } as unknown as Blob);
+  // Expo's global fetch doesn't accept React Native's { uri, name, type } descriptor; File implements Blob.
+  form.append("audio", new File(uri), "question.m4a");
   form.append("language", language);
   const res = await fetch(`${baseUrl}/api/transcribe`, { method: "POST", body: form });
   if (!res.ok) throw new Error(await readError(res));

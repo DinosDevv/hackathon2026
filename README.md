@@ -32,16 +32,15 @@ The app finds the server automatically: it uses the same laptop address as Expo 
 
 | | |
 |---|---|
-| 🎤 Ask Helper | Speak or type any question, then ask follow-ups |
-| 🛡️ Check a screenshot | Scam and safety check with a 🟢🟡🔴 verdict |
-| 🔗 Check copied message or link | Reads the clipboard and checks it |
-| 📷 Read a letter or sign | Photograph paper mail, bills or another screen |
-| 📱 Explain a screenshot | "What is this and what do I do?" |
-| 💬 Write a reply | Ask "reply saying I'll be there at 5". Opens Messages with the text ready, or copies or shares it |
-| 👪 Tell family / Call family | Shown when something looks risky. Texts or calls the trusted contact |
-| 🕘 Past questions | Saved on the phone |
-| ⚙️ Settings | Speak / write / both, speaking speed, text size, English / Greek, trusted contact |
-| ✨ Helper in any app | Guide for the iOS Shortcut + AssistiveTouch floating button (below) |
+| Talk to Helper | Speak or type any question, then ask follow-ups |
+| Choose a screenshot | What it is, whether it is safe, what to do, with a safe / careful / scam verdict |
+| Check what I copied | Reads the clipboard and checks it |
+| Take a photo | Photograph paper mail, bills or another screen |
+| Write a reply | Ask "reply saying I'll be there at 5". Opens Messages with the text ready, or copies or shares it |
+| Tell family / Call family | Shown when something looks risky. Texts or calls the trusted contact |
+| Past answers | Saved on the phone |
+| Settings | Speak / write / both, speaking speed, text size, English / Greek, trusted contact |
+| Helper in any app | Guide for the iOS Shortcut + AssistiveTouch floating button (below) |
 
 ## Helper in any app (AssistiveTouch + Shortcut)
 

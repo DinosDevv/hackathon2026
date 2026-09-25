@@ -1,134 +1,107 @@
-import { Redirect, useRouter } from "expo-router";
-import { useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
-import * as Haptics from "expo-haptics";
-import { pickScreenshot, readClipboard, setPendingAttachment, takePhoto, type Attachment } from "../src/attachments";
-import { BigButton, Screen, Txt } from "../src/components/ui";
+import { setStatusBarStyle } from "expo-status-bar";
+import { Redirect, useFocusEffect } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Icon, type IconName } from "../src/components/Icon";
+import { Txt, tap } from "../src/components/ui";
+import { MorePage } from "../src/home/MorePage";
+import { ShowPage } from "../src/home/ShowPage";
+import { TalkPage } from "../src/home/TalkPage";
 import { useSettings } from "../src/settings";
 import { colors } from "../src/theme";
 
-const QUESTIONS = {
-  safe: "Is this safe? Could it be a scam? What should I do?",
-  explain: "Please explain what is on this screen and what I should do.",
-  read: "Please read this to me and explain what it means in simple words.",
-  link: "Is this message or link safe? Could it be a scam?",
-};
+// Swipe between pages like Instagram. Talk sits in the middle and is where the app opens.
+const PAGES: { label: string; icon: IconName }[] = [
+  { label: "Show me", icon: "camera" },
+  { label: "Talk", icon: "mic" },
+  { label: "More", icon: "more" },
+];
+const TALK = 1;
 
 export default function Home() {
-  const router = useRouter();
   const { settings } = useSettings();
-  const [busy, setBusy] = useState<string | null>(null);
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const [page, setPage] = useState(TALK);
+  const pageRef = useRef(TALK);
+
+  // Light status bar over the teal Talk page, dark everywhere else.
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle(page === TALK ? "light" : "dark");
+      return () => setStatusBarStyle("dark");
+    }, [page]),
+  );
 
   if (!settings.onboarded) return <Redirect href="/onboarding" />;
 
-  const startWith = async (key: keyof typeof QUESTIONS, get: () => Promise<Attachment | null>, emptyMessage?: string) => {
-    setBusy(key);
-    try {
-      const attachment = await get();
-      if (!attachment) {
-        if (emptyMessage) Alert.alert("Nothing to check yet", emptyMessage);
-        return;
-      }
-      setPendingAttachment(attachment);
-      router.push({ pathname: "/ask", params: { question: QUESTIONS[key] } });
-    } catch (e) {
-      Alert.alert("Something went wrong", e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
+  const goTo = (i: number) => {
+    tap();
+    scrollRef.current?.scrollTo({ x: i * width, animated: true });
   };
 
-  const greeting = settings.name ? `Hello, ${settings.name}` : "Hello";
-
   return (
-    <Screen>
-      <Txt size="title" bold>
-        {greeting} 👋
-      </Txt>
-      <Txt color={colors.muted}>What can I help you with?</Txt>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ask Helper. Press and speak your question."
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-          setPendingAttachment(null);
-          router.push({ pathname: "/ask", params: { listen: "1" } });
+    <View style={styles.screen}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        contentOffset={{ x: TALK * width, y: 0 }}
+        onLayout={() => scrollRef.current?.scrollTo({ x: pageRef.current * width, animated: false })}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          const p = Math.round(e.nativeEvent.contentOffset.x / width);
+          if (p !== pageRef.current && p >= 0 && p < PAGES.length) {
+            pageRef.current = p;
+            setPage(p);
+          }
         }}
-        style={({ pressed }) => [styles.mic, pressed && { opacity: 0.8 }]}
+        style={{ flex: 1 }}
       >
-        <Txt size="huge">🎤</Txt>
-        <Txt size="title" bold color={colors.primaryText}>
-          Ask Helper
-        </Txt>
-        <Txt color={colors.primaryText}>Press and speak your question</Txt>
-      </Pressable>
+        <ShowPage width={width} />
+        <TalkPage width={width} />
+        <MorePage width={width} />
+      </ScrollView>
 
-      <Txt size="large" bold style={{ marginTop: 8 }}>
-        Is something suspicious?
-      </Txt>
-      <BigButton
-        icon="🛡️"
-        label="Check a screenshot"
-        hint="A message, email or website you saved"
-        loading={busy === "safe"}
-        onPress={() => startWith("safe", pickScreenshot)}
-      />
-      <BigButton
-        icon="🔗"
-        label="Check a copied message or link"
-        hint="Press and hold on it, tap Copy, then come here"
-        loading={busy === "link"}
-        onPress={() =>
-          startWith(
-            "link",
-            readClipboard,
-            "Nothing has been copied. Press and hold on the message or link, tap Copy, then come back and press this button.",
-          )
-        }
-      />
-
-      <Txt size="large" bold style={{ marginTop: 8 }}>
-        Help me understand
-      </Txt>
-      <BigButton
-        icon="📷"
-        label="Read a letter or sign"
-        hint="Take a photo and I'll explain it"
-        loading={busy === "read"}
-        onPress={() => startWith("read", takePhoto)}
-      />
-      <BigButton
-        icon="📱"
-        label="Explain a screenshot"
-        hint="I'll tell you what's on it and what to do"
-        loading={busy === "explain"}
-        onPress={() => startWith("explain", pickScreenshot)}
-      />
-
-      <View style={styles.footer}>
-        <BigButton icon="✨" label="Use Helper in any app" onPress={() => router.push("/assistive")} />
-        <BigButton icon="🕘" label="Past questions" onPress={() => router.push("/history")} />
-        <BigButton icon="⚙️" label="Settings" onPress={() => router.push("/settings")} />
-        {settings.familyPhone ? (
-          <BigButton
-            icon="📞"
-            label={`Call ${settings.familyName || "family"}`}
-            onPress={() => Linking.openURL(`tel:${settings.familyPhone}`).catch(() => {})}
-          />
-        ) : null}
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]} accessibilityRole="tablist">
+        {PAGES.map((p, i) => {
+          const active = i === page;
+          return (
+            <Pressable
+              key={p.label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={p.label}
+              onPress={() => goTo(i)}
+              style={[styles.tab, active && styles.tabActive]}
+            >
+              <Icon name={p.icon} size={24} color={active ? colors.primaryText : colors.muted} />
+              <Txt size="small" bold color={active ? colors.primaryText : colors.muted}>
+                {p.label}
+              </Txt>
+            </Pressable>
+          );
+        })}
       </View>
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  mic: {
-    backgroundColor: colors.primary,
-    borderRadius: 28,
-    paddingVertical: 28,
-    alignItems: "center",
-    gap: 4,
+  screen: { flex: 1, backgroundColor: colors.bg },
+  bar: {
+    flexDirection: "row",
+    gap: 8,
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  footer: { gap: 12, marginTop: 16 },
+  tab: { flex: 1, minHeight: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", gap: 2 },
+  tabActive: { backgroundColor: colors.primary },
 });

@@ -1,7 +1,10 @@
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +17,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, useFontSizes } from "../theme";
+import { colors, radius, useFontSizes } from "../theme";
+import { Icon, type IconName } from "./Icon";
 
 type Size = keyof ReturnType<typeof useFontSizes>;
+
+export function tap() {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+}
 
 export function Txt({
   children,
@@ -25,6 +33,7 @@ export function Txt({
   color = colors.text,
   style,
   center,
+  header,
 }: {
   children: ReactNode;
   size?: Size;
@@ -32,13 +41,17 @@ export function Txt({
   color?: string;
   style?: StyleProp<TextStyle>;
   center?: boolean;
+  header?: boolean;
 }) {
   const fonts = useFontSizes();
+  const big = size === "title" || size === "huge";
   return (
     <Text
+      accessibilityRole={header ? "header" : undefined}
       style={[
-        { fontSize: fonts[size], lineHeight: Math.round(fonts[size] * 1.35), color },
-        bold && { fontWeight: "700" },
+        { fontSize: fonts[size], lineHeight: Math.round(fonts[size] * (big ? 1.2 : 1.4)), color },
+        bold && { fontWeight: big ? "800" : "700" },
+        big && { letterSpacing: -0.4 },
         center && { textAlign: "center" },
         style,
       ]}
@@ -48,22 +61,84 @@ export function Txt({
   );
 }
 
-export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
+/** Every screen but Home gets a big, labelled Back button instead of a small arrow. */
+export function TopBar({ backLabel = "Back", right }: { backLabel?: string; right?: ReactNode }) {
+  const router = useRouter();
   return (
-    <SafeAreaView style={styles.screen} edges={["bottom", "left", "right"]}>
-      {scroll ? (
+    <View style={styles.topBar}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={backLabel}
+        hitSlop={8}
+        onPress={() => {
+          tap();
+          if (router.canGoBack()) router.back();
+          else router.replace("/");
+        }}
+        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+      >
+        <Icon name="back" size={22} color={colors.primary} />
+        <Txt bold color={colors.primary}>
+          {backLabel}
+        </Txt>
+      </Pressable>
+      <View style={{ flex: 1 }} />
+      {right}
+    </View>
+  );
+}
+
+export function Screen({
+  children,
+  title,
+  backLabel,
+  back = true,
+  footer,
+}: {
+  children: ReactNode;
+  title?: string;
+  backLabel?: string;
+  back?: boolean;
+  footer?: ReactNode;
+}) {
+  return (
+    <SafeAreaView style={styles.screen}>
+      {back && <TopBar backLabel={backLabel} />}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {title ? (
+            <Txt size="title" bold header>
+              {title}
+            </Txt>
+          ) : null}
           {children}
         </ScrollView>
-      ) : (
-        <View style={[styles.content, { flex: 1 }]}>{children}</View>
-      )}
+        {footer ? <View style={styles.footer}>{footer}</View> : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-type ButtonVariant = "primary" | "secondary" | "danger";
+/** Rounded square behind an icon, tinted to match. */
+export function IconBadge({ name, color = colors.primary, bg = colors.primarySoft, size = 56 }: {
+  name: IconName;
+  color?: string;
+  bg?: string;
+  size?: number;
+}) {
+  return (
+    <View style={[styles.badge, { width: size, height: size, borderRadius: size * 0.32, backgroundColor: bg }]}>
+      <Icon name={name} size={size * 0.5} color={color} />
+    </View>
+  );
+}
 
+type ButtonVariant = "primary" | "secondary" | "danger" | "row";
+
+/**
+ * primary/secondary/danger: solid action buttons.
+ * row: a white card with an icon badge that takes you somewhere (shows a chevron).
+ */
 export function BigButton({
   label,
   hint,
@@ -76,43 +151,73 @@ export function BigButton({
 }: {
   label: string;
   hint?: string;
-  icon?: string;
+  icon?: IconName;
   onPress: () => void;
   variant?: ButtonVariant;
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const fg = variant === "secondary" ? colors.text : colors.primaryText;
-  const bg = variant === "primary" ? colors.primary : variant === "danger" ? colors.listening : colors.card;
+  const solid = variant === "primary" || variant === "danger";
+  const fg = solid ? colors.primaryText : variant === "row" ? colors.text : colors.primary;
+  const bg = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : colors.card;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={hint ? `${label}. ${hint}` : label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        tap();
         onPress();
       }}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: bg, borderColor: variant === "secondary" ? colors.border : bg },
-        (pressed || disabled) && { opacity: 0.6 },
+        variant === "row" && styles.rowButton,
+        { backgroundColor: bg, borderColor: solid ? bg : colors.border },
+        pressed && styles.pressed,
+        disabled && { opacity: 0.45 },
         style,
       ]}
     >
-      {icon ? <Text style={styles.icon}>{icon}</Text> : null}
-      <View style={{ flex: 1 }}>
+      {icon && variant === "row" ? <IconBadge name={icon} /> : null}
+      {icon && variant !== "row" ? <Icon name={icon} size={26} color={fg} /> : null}
+      <View style={{ flex: variant === "row" ? 1 : undefined, flexShrink: 1 }}>
         <Txt size="large" bold color={fg}>
           {label}
         </Txt>
         {hint ? (
-          <Txt size="small" color={variant === "secondary" ? colors.muted : fg}>
+          <Txt size="small" color={solid ? fg : colors.muted}>
             {hint}
           </Txt>
         ) : null}
       </View>
-      {loading ? <ActivityIndicator color={fg} /> : null}
+      {loading ? <ActivityIndicator color={fg} /> : variant === "row" ? <Icon name="forward" size={20} color={colors.muted} /> : null}
+    </Pressable>
+  );
+}
+
+/** Low-emphasis text button for secondary choices ("Type instead", "Delete all"). */
+export function QuietButton({ label, icon, onPress, color = colors.primary }: {
+  label: string;
+  icon?: IconName;
+  onPress: () => void;
+  color?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}
+    >
+      {icon ? <Icon name={icon} size={22} color={color} /> : null}
+      <Txt bold color={color}>
+        {label}
+      </Txt>
     </Pressable>
   );
 }
@@ -127,7 +232,7 @@ export function Choice<T extends string | number | boolean>({
   onChange: (v: T) => void;
 }) {
   return (
-    <View style={styles.choiceRow}>
+    <View style={styles.choiceRow} accessibilityRole="radiogroup">
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -135,9 +240,14 @@ export function Choice<T extends string | number | boolean>({
             key={String(o.value)}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
-            onPress={() => onChange(o.value)}
-            style={[styles.choice, selected && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            accessibilityLabel={o.label}
+            onPress={() => {
+              tap();
+              onChange(o.value);
+            }}
+            style={[styles.choice, selected && styles.choiceSelected]}
           >
+            {selected ? <Icon name="check" size={20} color={colors.primaryText} /> : null}
             <Txt bold center color={selected ? colors.primaryText : colors.text}>
               {o.label}
             </Txt>
@@ -152,10 +262,11 @@ export function Field(props: TextInputProps & { label: string }) {
   const fonts = useFontSizes();
   const { label, style, ...rest } = props;
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       <Txt bold>{label}</Txt>
       <TextInput
-        placeholderTextColor="#8A8A8A"
+        accessibilityLabel={label}
+        placeholderTextColor="#7C7F85"
         {...rest}
         style={[styles.input, { fontSize: fonts.body }, style]}
       />
@@ -167,34 +278,62 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
+export function SectionTitle({ children }: { children: string }) {
+  return (
+    <Txt size="small" bold color={colors.muted} header style={styles.section}>
+      {children.toUpperCase()}
+    </Txt>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 16, paddingBottom: 40 },
-  button: {
-    minHeight: 72,
-    borderRadius: 18,
-    borderWidth: 2,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 16 },
+  footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8, gap: 10, borderTopWidth: 1, borderTopColor: colors.border },
+  topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 6, minHeight: 60 },
+  backButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 6,
+    minHeight: 52,
+    paddingLeft: 12,
+    paddingRight: 18,
+    borderRadius: 26,
+    backgroundColor: colors.primarySoft,
   },
-  icon: { fontSize: 32 },
+  pressed: { opacity: 0.7, transform: [{ scale: 0.985 }] },
+  badge: { alignItems: "center", justifyContent: "center" },
+  button: {
+    minHeight: 68,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  rowButton: { justifyContent: "flex-start", paddingHorizontal: 14, gap: 16, minHeight: 84, borderWidth: 1 },
+  quiet: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 52, paddingHorizontal: 12 },
   choiceRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
   choice: {
     flexGrow: 1,
-    minHeight: 60,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    minHeight: 60,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: radius.sm,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.card,
   },
+  choiceSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   input: {
     minHeight: 60,
-    borderRadius: 14,
+    borderRadius: radius.sm,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -204,10 +343,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 18,
-    borderWidth: 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
     borderColor: colors.border,
     padding: 18,
-    gap: 12,
+    gap: 14,
   },
+  section: { letterSpacing: 1, marginTop: 8, marginBottom: -4 },
 });
