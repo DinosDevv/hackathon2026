@@ -1,0 +1,8 @@
+Let's build a mobile app using react native and typescript (unless you have another idea for the stack)
+
+We target people who have no experience in using modern technology. The whole idea is that a digital "grandson"/guardian will be available, at all times, offering to watch and analyse the person's screen and offer explanation in what the user sees and how he should then navigate. I'm thinking of two modes where the suggestion will be displayed in a short bubble of conversation or have a voice narrator in order to help blindness as well. It's not supposed to be just another voice agent but an engine that summarizes information displayed on the screen. With the use of the app, user should be able to gain points?? (THAT DO WHAT??? BUT PEOPLE HAVE STUPID ATTENTION SPANS AND NO MOTIVE FOR ANYTHING). "Are you using technology to fight lack of knowledge regarding technology? We are thinking of a way to make the app accessible through some action that is already familiar to all smartphone users, despite of their experience, like through Contacts (We had an idea for booting the app from the phone), or a widget that enables the automatic reading of the screen and can be disabled at any time (to ensure privacy and security for the user). 
+
+ASPECTS:
+    - Enabling/Disabling the service
+    - Capturing and transcripting the contents of the page (maybe some ML for identification of images/pictures)
+    - Passing the transcript into an LLM and asking the model to give a summary and suggestions on further navigation 
