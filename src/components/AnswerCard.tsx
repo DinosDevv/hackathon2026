@@ -1,18 +1,15 @@
 import * as Clipboard from "expo-clipboard";
 import * as SMS from "expo-sms";
 import { useState } from "react";
-import { Alert, Linking, Share, StyleSheet, View } from "react-native";
+import { Alert, Share, StyleSheet, View } from "react-native";
 import type { HelperAnswer } from "../api";
+import { callGuardian, textGuardian } from "../guardian";
 import { useSettings } from "../settings";
-import { speak, stopSpeaking } from "../speech";
-import { colors, radius } from "../theme";
+import { sentence, speak, spokenText, stopSpeaking } from "../speech";
+import { colors } from "../theme";
+import { Chip, Chips, HelperBubble } from "./Chat";
 import { Icon } from "./Icon";
-import { BigButton, QuietButton, Txt } from "./ui";
-
-export function spokenText(answer: HelperAnswer) {
-  const steps = answer.steps.map((s, i) => `Step ${i + 1}. ${s}`).join(" ");
-  return [answer.headline + ".", answer.explanation, steps].filter(Boolean).join(" ");
-}
+import { Txt } from "./ui";
 
 async function sendText(recipients: string[], message: string) {
   if (await SMS.isAvailableAsync()) {
@@ -22,31 +19,45 @@ async function sendText(recipients: string[], message: string) {
   }
 }
 
-/** The verdict's coloured label with its icon, used on answers and in history. */
+/** Small coloured tag with the verdict, e.g. "Don't trust this". */
 export function VerdictLabel({ verdict }: { verdict: HelperAnswer["verdict"] }) {
   const v = colors.verdict[verdict];
   return (
-    <View style={styles.verdictLabel}>
-      <Icon name={v.icon} size={24} color={v.fg} />
-      <Txt size="small" bold color={v.fg} style={{ letterSpacing: 0.8 }}>
-        {v.label.toUpperCase()}
+    <View style={[styles.tag, { backgroundColor: v.bg }]}>
+      <Icon name={v.icon} size={18} color={v.fg} />
+      <Txt size="small" bold color={v.fg}>
+        {v.label}
       </Txt>
     </View>
   );
 }
 
-export function AnswerCard({ answer, speaking, onSpeakingChange }: {
+/** Helper's reply as chat messages: the answer, then any follow-ups (talk to the guardian, a drafted reply). */
+export function AnswerCard({ answer, speaking, onSpeakingChange, onMore, imageUri }: {
   answer: HelperAnswer;
+  /** The screenshot or photo they asked about, attached when texting the guardian. */
+  imageUri?: string;
   speaking: boolean;
   onSpeakingChange: (speaking: boolean) => void;
+  /** Shown as "Tell me more" when set: asks Helper to go into more detail. */
+  onMore?: () => void;
 }) {
   const { settings } = useSettings();
   const [expanded, setExpanded] = useState(settings.answerMode !== "voice");
   const v = colors.verdict[answer.verdict];
-  const family = settings.familyName || "your family";
-  // In an emergency the EmergencyPanel above already offers to call them.
+  // Helper's face mirrors the news: pleased when it's fine, concerned when it isn't.
+  const mood = answer.emergency || answer.verdict === "danger" || answer.verdict === "caution" ? "concerned" : "happy";
+  const guardian = settings.familyName || "τον κηδεμόνα σου";
+  // Helper can't fix this one: offer the drafted text to the guardian, or a call.
+  const needsGuardian = answer.guardianHelp === "text" && Boolean(answer.guardianMessage);
+  // Otherwise a gentler offer. Not in an emergency (the EmergencyPanel offers the call) or when a call is
+  // already starting (the CallingCard below).
   const showFamily =
-    Boolean(settings.familyPhone) && !answer.emergency && (answer.tellFamily || answer.verdict === "danger");
+    Boolean(settings.familyPhone) &&
+    !answer.emergency &&
+    !needsGuardian &&
+    answer.guardianHelp !== "call" &&
+    (answer.tellFamily || answer.verdict === "danger");
 
   const toggleSpeech = () => {
     if (speaking) {
@@ -54,126 +65,113 @@ export function AnswerCard({ answer, speaking, onSpeakingChange }: {
       onSpeakingChange(false);
     } else {
       onSpeakingChange(true);
-      speak(spokenText(answer), settings, () => onSpeakingChange(false));
+      speak(spokenText(answer, settings.language), settings, () => onSpeakingChange(false));
     }
   };
 
-  const tellFamily = () => {
-    const from = settings.name ? `It's ${settings.name}. ` : "";
-    sendText(
-      [settings.familyPhone],
-      `Hi, ${from}my Helper app checked something for me: "${answer.headline}". ${answer.explanation} Can you help me with this?`,
-    ).catch(() => Alert.alert("Couldn't open Messages"));
+  // A short summary for the gentle "want me to get Maria?" offer; the "needs the guardian" case uses Claude's own text.
+  const summary = () => {
+    const from = settings.name ? `${settings.name} εδώ. ` : "";
+    return `Γεια σου, ${from}Ο HelpNona μου έλεγξε κάτι: "${answer.headline}". ${answer.explanation} Μπορείς να με βοηθήσεις;`;
   };
+  const text = (message: string) =>
+    textGuardian(settings, message, imageUri).catch(() => Alert.alert("Δεν άνοιξαν τα Μηνύματα"));
 
   return (
-    <View style={{ gap: 12 }}>
-      <View style={[styles.card, { borderColor: v.fg }]}>
-        <View style={[styles.band, { backgroundColor: v.bg }]}>
-          <VerdictLabel verdict={answer.verdict} />
-          <Txt size="title" bold color={colors.text}>
-            {answer.headline}
-          </Txt>
-        </View>
+    <View style={{ gap: 8 }}>
+      <HelperBubble mood={mood}>
+        {answer.verdict !== "info" ? <VerdictLabel verdict={answer.verdict} /> : null}
+        {/* One natural message, the way a person texts: no bold title above a paragraph. */}
+        <Txt size="large">
+          {sentence(answer.headline)}
+          {expanded && answer.explanation ? ` ${answer.explanation}` : ""}
+        </Txt>
+        {expanded ? (
+          <>
+            {answer.steps.map((step, i) => (
+              <View key={i} style={styles.step}>
+                <Txt bold color={v.fg} style={styles.stepNumber}>
+                  {i + 1}.
+                </Txt>
+                <Txt style={{ flex: 1 }}>{step}</Txt>
+              </View>
+            ))}
+          </>
+        ) : null}
+      </HelperBubble>
+      <Chips>
+        {!expanded ? <Chip icon="text" label="Δείξ' το γραπτά" onPress={() => setExpanded(true)} /> : null}
+        <Chip icon={speaking ? "stop" : "speaker"} label={speaking ? "Σταμάτα" : "Διάβασέ το"} onPress={toggleSpeech} />
+        {onMore ? <Chip icon="chat" label="Πες μου κι άλλα" onPress={onMore} /> : null}
+      </Chips>
 
-        <View style={styles.body}>
-          {expanded ? (
-            <>
-              <Txt size="large">{answer.explanation}</Txt>
-              {answer.steps.length > 0 && (
-                <View style={{ gap: 12 }}>
-                  <Txt bold color={colors.muted}>
-                    What to do
-                  </Txt>
-                  {answer.steps.map((step, i) => (
-                    <View key={i} style={styles.step}>
-                      <View style={[styles.stepNumber, { backgroundColor: v.fg }]}>
-                        <Txt bold color={colors.primaryText}>
-                          {i + 1}
-                        </Txt>
-                      </View>
-                      <Txt size="large" style={{ flex: 1 }}>
-                        {step}
-                      </Txt>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </>
-          ) : (
-            <QuietButton icon="text" label="Show it in writing" onPress={() => setExpanded(true)} />
-          )}
-
-          <BigButton icon={speaking ? "stop" : "speaker"} label={speaking ? "Stop reading" : "Read it to me"} onPress={toggleSpeech} />
-        </View>
-      </View>
+      {needsGuardian ? (
+        settings.familyPhone ? (
+          <>
+            <HelperBubble first={false} mood={mood}>
+              <Txt>Αυτό θα στείλω σε {guardian}{imageUri ? ", μαζί με τη φωτογραφία σου" : ""}:</Txt>
+              <View style={styles.quote}>
+                <Txt>{answer.guardianMessage}</Txt>
+              </View>
+            </HelperBubble>
+            <Chips>
+              <Chip primary icon="message" label={`Μήνυμα: ${settings.familyName || "κηδεμόνας"}`} onPress={() => text(answer.guardianMessage!)} />
+              <Chip icon="call" label="Καλύτερα κλήση" onPress={() => callGuardian(settings).catch(() => {})} />
+            </Chips>
+          </>
+        ) : (
+          <HelperBubble first={false} mood="calm">
+            <Txt>Εδώ χρειαζόμαστε {guardian}, αλλά δεν έχω ακόμα τον αριθμό. Ζήτα από κάποιον να τον βάλει στις Ρυθμίσεις.</Txt>
+          </HelperBubble>
+        )
+      ) : null}
 
       {showFamily ? (
-        <View style={[styles.panel, { backgroundColor: v.bg }]}>
-          <View style={styles.panelTitle}>
-            <Icon name="people" size={26} color={colors.text} />
-            <Txt size="large" bold style={{ flex: 1 }}>
-              Talk to {family} before you do anything
-            </Txt>
-          </View>
-          <View style={styles.pair}>
-            <BigButton icon="call" label="Call" variant="primary" style={{ flex: 1 }} onPress={() => Linking.openURL(`tel:${settings.familyPhone}`).catch(() => {})} />
-            <BigButton icon="message" label="Text" style={{ flex: 1 }} onPress={tellFamily} />
-          </View>
-        </View>
+        <>
+          <HelperBubble first={false} mood={mood}>
+            <Txt>Θες να ειδοποιήσω {guardian};</Txt>
+          </HelperBubble>
+          <Chips>
+            <Chip
+              primary
+              icon="call"
+              label={`Κάλεσε: ${settings.familyName || "κηδεμόνας"}`}
+              onPress={() => callGuardian(settings).catch(() => {})}
+            />
+            <Chip icon="message" label="Στείλε μήνυμα" onPress={() => text(summary())} />
+          </Chips>
+        </>
       ) : null}
 
       {answer.draftReply ? (
-        <View style={styles.panel}>
-          <Txt bold color={colors.muted}>
-            Your message is ready
-          </Txt>
-          <View style={styles.bubble}>
-            <Txt size="large" color={colors.primaryText}>
-              {answer.draftReply}
-            </Txt>
-          </View>
-          <BigButton
-            icon="message"
-            label="Send it"
-            hint="You choose who, then press send"
-            variant="primary"
-            onPress={() => sendText([], answer.draftReply).catch(() => {})}
-          />
-          <View style={styles.pair}>
-            <QuietButton
+        <>
+          <HelperBubble first={false} mood={mood}>
+            <Txt>Να ένα μήνυμα που μπορείς να στείλεις:</Txt>
+            <View style={styles.quote}>
+              <Txt>{answer.draftReply}</Txt>
+            </View>
+          </HelperBubble>
+          <Chips>
+            <Chip primary icon="message" label="Στείλ' το" onPress={() => sendText([], answer.draftReply).catch(() => {})} />
+            <Chip
               icon="copy"
-              label="Copy"
+              label="Αντιγραφή"
               onPress={async () => {
                 await Clipboard.setStringAsync(answer.draftReply);
-                Alert.alert("Copied", "Press and hold where you want to write, then tap Paste.");
+                Alert.alert("Αντιγράφηκε", "Πάτα παρατεταμένα εκεί που θες να γράψεις και μετά Επικόλληση.");
               }}
             />
-            <QuietButton icon="share" label="Other apps" onPress={() => Share.share({ message: answer.draftReply }).catch(() => {})} />
-          </View>
-        </View>
+            <Chip icon="share" label="Άλλες εφαρμογές" onPress={() => Share.share({ message: answer.draftReply }).catch(() => {})} />
+          </Chips>
+        </>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.md, borderWidth: 2, backgroundColor: colors.card, overflow: "hidden" },
-  band: { padding: 18, gap: 6 },
-  body: { padding: 18, gap: 18 },
-  verdictLabel: { flexDirection: "row", alignItems: "center", gap: 8 },
-  step: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  stepNumber: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  panel: { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 },
-  panelTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
-  pair: { flexDirection: "row", gap: 10, justifyContent: "center" },
-  bubble: {
-    alignSelf: "flex-start",
-    maxWidth: "92%",
-    backgroundColor: colors.primary,
-    borderRadius: 20,
-    borderBottomLeftRadius: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
+  tag: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
+  step: { flexDirection: "row", gap: 8 },
+  stepNumber: { minWidth: 22 },
+  quote: { backgroundColor: colors.sunken, borderRadius: 14, borderLeftWidth: 4, borderLeftColor: colors.primary, padding: 12 },
 });

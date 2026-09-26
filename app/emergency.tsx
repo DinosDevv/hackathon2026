@@ -4,10 +4,10 @@ import { colors } from "../src/theme";
 
 export default function Emergency() {
   return (
-    <Screen title="Get help">
+    <Screen title="Βοήθεια τώρα">
       <EmergencyPanel />
       <Txt color={colors.muted}>
-        Your phone asks before it calls, so nothing happens by accident. If you opened this by mistake, press Back.
+        Το κινητό σε ρωτάει πριν καλέσει, οπότε τίποτα δεν γίνεται κατά λάθος. Αν το άνοιξες κατά λάθος, πάτα Πίσω.
       </Txt>
     </Screen>
   );

@@ -7,8 +7,12 @@ export type Language = "English" | "Greek";
 export type Settings = {
   onboarded: boolean;
   name: string;
+  /** What the grandkids call them, e.g. "Yiayia". Helper uses it instead of the first name. */
+  nickname: string;
   answerMode: AnswerMode;
   textScale: number;
+  /** Short answers by default; "full" gives a bit more explanation and more steps. */
+  detail: "short" | "full";
   slowSpeech: boolean;
   language: Language;
   familyName: string;
@@ -17,6 +21,8 @@ export type Settings = {
   emergencyNumber: string;
   /** Set the first time Helper is opened from the one-press shortcut, so the setup guide can confirm it works. */
   shortcutTested: boolean;
+  /** Set once the "Helper, look" shortcut has reached the server. */
+  lookTested: boolean;
   /** Overrides the auto-detected backend address, e.g. a tunnel URL for demos. */
   serverUrl: string;
 };
@@ -24,16 +30,25 @@ export type Settings = {
 export const defaultSettings: Settings = {
   onboarded: false,
   name: "",
+  nickname: "",
   answerMode: "both",
   textScale: 1,
+  detail: "short",
   slowSpeech: true,
-  language: "English",
+  // HelpNona is a Greek app: everything, including the answers, is in Greek.
+  language: "Greek",
   familyName: "",
   familyPhone: "",
   emergencyNumber: "",
   shortcutTested: false,
+  lookTested: false,
   serverUrl: "",
 };
+
+/** How Helper addresses the user: their family nickname, else their first name. */
+export function callName(settings: Settings) {
+  return settings.nickname.trim() || settings.name.trim();
+}
 
 const STORAGE_KEY = "helper.settings.v1";
 
@@ -53,7 +68,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (raw) setSettings({ ...defaultSettings, ...JSON.parse(raw) });
+        // Older saved setups may still say English; the app is Greek-only now.
+        if (raw) setSettings({ ...defaultSettings, ...JSON.parse(raw), language: "Greek" });
       })
       .catch(() => {})
       .finally(() => setLoaded(true));

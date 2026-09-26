@@ -15,10 +15,10 @@ export const colors = {
   listening: "#B8420F",
   danger: "#B42318",
   verdict: {
-    safe: { fg: "#16703A", bg: "#E3F1E6", label: "Looks safe", icon: "safe" },
-    caution: { fg: "#8A5300", bg: "#FBEFD6", label: "Be careful", icon: "caution" },
-    danger: { fg: "#B42318", bg: "#FBE4E1", label: "Don't trust this", icon: "danger" },
-    info: { fg: "#0F5E59", bg: "#DDEBE8", label: "Here's what I found", icon: "info" },
+    safe: { fg: "#16703A", bg: "#E3F1E6", label: "Είναι ασφαλές", icon: "safe" },
+    caution: { fg: "#8A5300", bg: "#FBEFD6", label: "Πρόσεξε", icon: "caution" },
+    danger: { fg: "#B42318", bg: "#FBE4E1", label: "Μην το εμπιστεύεσαι", icon: "danger" },
+    info: { fg: "#0F5E59", bg: "#DDEBE8", label: "Να τι βρήκα", icon: "info" },
   } satisfies Record<string, { fg: string; bg: string; label: string; icon: IconName }>,
 } as const;
 

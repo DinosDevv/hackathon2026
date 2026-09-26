@@ -13,6 +13,7 @@ const ICONS = {
   history: { ios: "clock.arrow.circlepath", android: "history" },
   settings: { ios: "gearshape.fill", android: "settings" },
   more: { ios: "square.grid.2x2.fill", android: "grid_view" },
+  home: { ios: "house.fill", android: "home" },
   call: { ios: "phone.fill", android: "call" },
   emergency: { ios: "staroflife.fill", android: "emergency" },
   message: { ios: "message.fill", android: "sms" },

@@ -5,7 +5,7 @@ import { checkHealth, resolveServerUrl } from "../src/api";
 import { emergencyNumber } from "../src/emergency";
 import { Icon } from "../src/components/Icon";
 import { BigButton, Card, Choice, Field, QuietButton, Screen, SectionTitle, Txt } from "../src/components/ui";
-import { useSettings, type AnswerMode } from "../src/settings";
+import { callName, useSettings, type AnswerMode } from "../src/settings";
 import { speak } from "../src/speech";
 import { colors } from "../src/theme";
 
@@ -21,110 +21,128 @@ export default function SettingsScreen() {
     setStatus(null);
     try {
       const health = await checkHealth(serverUrl);
-      setStatus({ ok: true, text: `Connected. Voice input ${health.stt ? "is on" : "uses the keyboard microphone"}.` });
+      setStatus({
+        ok: true,
+        text: `Συνδέθηκε. Φωνητική εισαγωγή: ${health.stt ? "ενεργή" : "μέσω του μικροφώνου του πληκτρολογίου"}. Φωνή HelpNona: ${health.tts ? "ενεργή" : "η φωνή του κινητού"}.`,
+      });
     } catch {
-      setStatus({ ok: false, text: `Can't reach ${serverUrl}` });
+      setStatus({ ok: false, text: `Δεν βρίσκω το ${serverUrl}` });
     } finally {
       setChecking(false);
     }
   };
 
   return (
-    <Screen title="Settings">
-      <SectionTitle>How Helper answers</SectionTitle>
+    <Screen title="Ρυθμίσεις">
+      <SectionTitle>Πώς απαντάει ο HelpNona</SectionTitle>
       <Card>
-        <Txt bold>Answers</Txt>
+        <Txt bold>Απαντήσεις</Txt>
         <Choice<AnswerMode>
           value={settings.answerMode}
           onChange={(answerMode) => update({ answerMode })}
           options={[
-            { label: "Speak", value: "voice" },
-            { label: "Write", value: "text" },
-            { label: "Both", value: "both" },
+            { label: "Φωνή", value: "voice" },
+            { label: "Γραπτά", value: "text" },
+            { label: "Και τα δύο", value: "both" },
           ]}
         />
-        <Txt bold>Speaking speed</Txt>
+        <Txt bold>Μήκος απάντησης</Txt>
+        <Choice<"short" | "full">
+          value={settings.detail}
+          onChange={(detail) => update({ detail })}
+          options={[
+            { label: "Σύντομα", value: "short" },
+            { label: "Αναλυτικά", value: "full" },
+          ]}
+        />
+        <Txt size="small" color={colors.muted}>
+          {settings.detail === "short"
+            ? "Μόνο τα σημαντικά. Πάτα «Πες μου κι άλλα» κάτω από μια απάντηση για τα υπόλοιπα."
+            : "Λίγο περισσότερη εξήγηση και περισσότερα βήματα."}
+        </Txt>
+        <Txt bold>Ταχύτητα ομιλίας</Txt>
         <Choice<boolean>
           value={settings.slowSpeech}
           onChange={(slowSpeech) => update({ slowSpeech })}
           options={[
-            { label: "Slower", value: true },
-            { label: "Normal", value: false },
+            { label: "Πιο αργά", value: true },
+            { label: "Κανονικά", value: false },
           ]}
         />
-        <Txt bold>Language</Txt>
-        <Choice
-          value={settings.language}
-          onChange={(language) => update({ language })}
-          options={[
-            { label: "English", value: "English" },
-            { label: "Ελληνικά", value: "Greek" },
-          ]}
+        <BigButton
+          icon="speaker"
+          label="Άκου τη φωνή μου"
+          onPress={() => speak(`Γεια σου${callName(settings) ? ", " + callName(settings) : ""}! Έτσι ακούγομαι.`, settings)}
         />
-        <BigButton icon="speaker" label="Hear my voice" onPress={() => speak("This is how I will sound.", settings)} />
       </Card>
 
-      <SectionTitle>Writing size</SectionTitle>
+      <SectionTitle>Μέγεθος γραμμάτων</SectionTitle>
       <Card>
         <Choice<number>
           value={settings.textScale}
           onChange={(textScale) => update({ textScale })}
           options={[
-            { label: "Big", value: 1 },
-            { label: "Bigger", value: 1.2 },
-            { label: "Biggest", value: 1.4 },
+            { label: "Μεγάλα", value: 1 },
+            { label: "Πιο μεγάλα", value: 1.2 },
+            { label: "Πολύ μεγάλα", value: 1.4 },
           ]}
         />
       </Card>
 
-      <SectionTitle>Name and guardian</SectionTitle>
+      <SectionTitle>Όνομα και κηδεμόνας</SectionTitle>
       <Card>
-        <Field label="Name of the person using Helper" value={settings.name} onChangeText={(name) => update({ name })} autoCapitalize="words" />
         <Field
-          label="Guardian's name"
-          placeholder="e.g. Maria"
+          label="Όνομα του χρήστη"
+          value={settings.name}
+          onChangeText={(name) => update({ name })}
+          autoCapitalize="words"
+        />
+        <Field
+          label="Πώς τον/τη λένε τα εγγόνια"
+          placeholder="π.χ. Γιαγιά, Νόνα, Παππού"
+          value={settings.nickname}
+          onChangeText={(nickname) => update({ nickname })}
+          autoCapitalize="words"
+        />
+        <Field
+          label="Όνομα κηδεμόνα"
+          placeholder="π.χ. Μαρία"
           value={settings.familyName}
           onChangeText={(familyName) => update({ familyName })}
           autoCapitalize="words"
         />
         <Field
-          label="Guardian's phone number"
+          label="Τηλέφωνο κηδεμόνα"
           value={settings.familyPhone}
           onChangeText={(familyPhone) => update({ familyPhone })}
           keyboardType="phone-pad"
         />
       </Card>
 
-      <SectionTitle>In an emergency</SectionTitle>
+      <SectionTitle>Σε έκτακτη ανάγκη</SectionTitle>
       <Card>
         <Txt>
-          If you sound like you need urgent help, Helper shows a red button that calls {emergencyNumber(settings)}
-          {settings.familyPhone ? `, and one that calls ${settings.familyName || "the guardian"}` : ""}.
+          Αν ακούγεται ότι χρειάζεσαι επείγουσα βοήθεια, ο HelpNona δείχνει ένα κόκκινο κουμπί που καλεί το{" "}
+          {emergencyNumber(settings)}
+          {settings.familyPhone ? `, κι ένα που καλεί: ${settings.familyName || "τον κηδεμόνα"}` : ""}.
         </Txt>
         <Field
-          label="Emergency number"
-          placeholder={`${emergencyNumber({ ...settings, emergencyNumber: "" })} (for your country)`}
+          label="Αριθμός έκτακτης ανάγκης"
+          placeholder={`${emergencyNumber({ ...settings, emergencyNumber: "" })} (για τη χώρα σου)`}
           value={settings.emergencyNumber}
           onChangeText={(emergencyNumber) => update({ emergencyNumber })}
           keyboardType="phone-pad"
         />
       </Card>
 
-      <SectionTitle>For the guardian</SectionTitle>
-      <BigButton
-        variant="row"
-        icon="tap"
-        label="One-press access"
-        hint="Open Helper with a button on the phone"
-        onPress={() => router.push("/assistive")}
-      />
+      <SectionTitle>Για τον κηδεμόνα</SectionTitle>
       <Card>
-        <Txt bold>Connection</Txt>
+        <Txt bold>Σύνδεση</Txt>
         <Txt size="small" color={colors.muted}>
-          Leave empty to use the laptop running Expo. Now using: {serverUrl}
+          Άφησέ το κενό για να χρησιμοποιηθεί ο υπολογιστής που τρέχει το Expo. Τώρα: {serverUrl}
         </Txt>
         <Field
-          label="Server address"
+          label="Διεύθυνση server"
           placeholder="https://…"
           value={settings.serverUrl}
           onChangeText={(serverUrl) => update({ serverUrl })}
@@ -132,7 +150,7 @@ export default function SettingsScreen() {
           autoCorrect={false}
           keyboardType="url"
         />
-        <BigButton icon="wifi" label="Test connection" loading={checking} onPress={testConnection} />
+        <BigButton icon="wifi" label="Έλεγχος σύνδεσης" loading={checking} onPress={testConnection} />
         {status && (
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <Icon name={status.ok ? "safe" : "danger"} size={24} color={status.ok ? colors.verdict.safe.fg : colors.danger} />
@@ -143,13 +161,13 @@ export default function SettingsScreen() {
 
       <QuietButton
         icon="retry"
-        label="Start setup again"
+        label="Ξεκίνα τη ρύθμιση από την αρχή"
         color={colors.danger}
         onPress={() =>
-          Alert.alert("Start again?", "This clears your settings.", [
-            { text: "Cancel", style: "cancel" },
+          Alert.alert("Από την αρχή;", "Θα σβηστούν οι ρυθμίσεις σου.", [
+            { text: "Άκυρο", style: "cancel" },
             {
-              text: "Start again",
+              text: "Από την αρχή",
               style: "destructive",
               onPress: () => {
                 reset();

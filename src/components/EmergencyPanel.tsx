@@ -1,10 +1,12 @@
 import * as Haptics from "expo-haptics";
 import { useEffect } from "react";
-import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import { emergencyNumber } from "../emergency";
 import { useSettings } from "../settings";
 import { colors, radius } from "../theme";
 import { Icon } from "./Icon";
+import Reanimated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import { PressableScale, arrive } from "./motion";
 import { BigButton, Txt } from "./ui";
 
 // iOS asks "Call …?" before dialling and Android opens the dialler, so a stray tap never calls on its own.
@@ -16,40 +18,46 @@ function call(number: string) {
 export function EmergencyPanel() {
   const { settings } = useSettings();
   const number = emergencyNumber(settings);
-  const guardian = settings.familyName || "your family";
+  const guardian = settings.familyName || "την οικογένεια";
 
+  // Two gentle pulses on the call button draw the eye without alarming anyone.
+  const pulse = useSharedValue(1);
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-  }, []);
+    pulse.value = withDelay(400, withRepeat(withSequence(withTiming(1.04, { duration: 300 }), withTiming(1, { duration: 300 })), 2));
+  }, [pulse]);
 
   return (
-    <View style={styles.panel} accessibilityRole="alert">
+    <Reanimated.View entering={arrive()} style={styles.panel} accessibilityRole="alert">
       <View style={styles.title}>
         <Icon name="emergency" size={30} color={colors.danger} />
         <Txt size="large" bold style={{ flex: 1 }} header>
-          Do you need help right now?
+          Χρειάζεσαι βοήθεια τώρα;
         </Txt>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Call ${number}, emergency services`}
-        onPress={() => call(number)}
-        style={({ pressed }) => [styles.sos, pressed && { transform: [{ scale: 0.98 }], opacity: 0.9 }]}
-      >
-        <View style={styles.sosIcon}>
-          <Icon name="call" size={34} color={colors.danger} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Txt size="title" bold color={colors.primaryText}>
-            Call {number}
-          </Txt>
-          <Txt color={colors.primaryText}>Emergency services</Txt>
-        </View>
-      </Pressable>
+      <Reanimated.View style={pulseStyle}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Κάλεσε το ${number}, υπηρεσίες έκτακτης ανάγκης`}
+          onPress={() => call(number)}
+          style={styles.sos}
+        >
+          <View style={styles.sosIcon}>
+            <Icon name="call" size={34} color={colors.danger} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Txt size="title" bold color={colors.primaryText}>
+              Κάλεσε το {number}
+            </Txt>
+            <Txt color={colors.primaryText}>Υπηρεσίες έκτακτης ανάγκης</Txt>
+          </View>
+        </PressableScale>
+      </Reanimated.View>
       {settings.familyPhone ? (
-        <BigButton icon="call" label={`Call ${guardian}`} onPress={() => call(settings.familyPhone)} />
+        <BigButton icon="call" label={`Κάλεσε: ${guardian}`} onPress={() => call(settings.familyPhone)} />
       ) : null}
-    </View>
+    </Reanimated.View>
   );
 }
 

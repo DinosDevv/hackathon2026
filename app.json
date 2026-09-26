@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Helper",
+    "name": "HelpNona",
     "slug": "helper",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +9,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Helper listens to your question when you press the microphone button.",
-        "NSCameraUsageDescription": "Helper can read a letter or sign you photograph.",
-        "NSPhotoLibraryUsageDescription": "Helper can check a screenshot you choose."
+        "NSMicrophoneUsageDescription": "Ο HelpNona ακούει την ερώτησή σου όταν πατάς το κουμπί του μικροφώνου.",
+        "NSCameraUsageDescription": "Ο HelpNona διαβάζει ένα γράμμα ή μια πινακίδα που φωτογραφίζεις.",
+        "NSPhotoLibraryUsageDescription": "Ο HelpNona ελέγχει ένα στιγμιότυπο οθόνης που διαλέγεις."
       }
     },
     "android": {
@@ -31,7 +31,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Helper listens to your question when you press the microphone button."
+          "microphonePermission": "Ο HelpNona ακούει την ερώτησή σου όταν πατάς το κουμπί του μικροφώνου."
         }
       ],
       "expo-localization"

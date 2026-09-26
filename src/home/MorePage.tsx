@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { EMERGENCY_BUTTON_SPACE } from "../components/EmergencyButton";
 import { BigButton, IconBadge, Txt } from "../components/ui";
 import { useSettings } from "../settings";
 import { colors, radius } from "../theme";
@@ -10,12 +11,12 @@ export function MorePage({ width }: { width: number }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { settings } = useSettings();
-  const guardian = settings.familyName || "Your guardian";
+  const guardian = settings.familyName || "Ο κηδεμόνας σου";
 
   return (
     <ScrollView style={{ width }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
-      <Txt size="title" bold header>
-        More
+      <Txt size="title" bold header style={{ paddingRight: EMERGENCY_BUTTON_SPACE - 20 }}>
+        Περισσότερα
       </Txt>
 
       {settings.familyPhone ? (
@@ -26,13 +27,13 @@ export function MorePage({ width }: { width: number }) {
               <Txt size="large" bold>
                 {guardian}
               </Txt>
-              <Txt color={colors.muted}>Your guardian</Txt>
+              <Txt color={colors.muted}>Ο κηδεμόνας σου</Txt>
             </View>
           </View>
           <BigButton
             variant="primary"
             icon="call"
-            label={`Call ${settings.familyName || "them"}`}
+            label={`Κάλεσε: ${settings.familyName || "κηδεμόνας"}`}
             onPress={() => Linking.openURL(`tel:${settings.familyPhone}`).catch(() => {})}
           />
         </View>
@@ -41,22 +42,15 @@ export function MorePage({ width }: { width: number }) {
       <BigButton
         variant="row"
         icon="history"
-        label="Past answers"
-        hint="Read or hear them again"
+        label="Παλιές απαντήσεις"
+        hint="Διάβασέ τες ή άκουσέ τες ξανά"
         onPress={() => router.push("/history")}
       />
       <BigButton
         variant="row"
-        icon="tap"
-        label="One-press access"
-        hint="Open Helper with a button on the phone"
-        onPress={() => router.push("/assistive")}
-      />
-      <BigButton
-        variant="row"
         icon="settings"
-        label="Settings"
-        hint="Writing size, voice, guardian"
+        label="Ρυθμίσεις"
+        hint="Μέγεθος γραμμάτων, φωνή, κηδεμόνας"
         onPress={() => router.push("/settings")}
       />
     </ScrollView>

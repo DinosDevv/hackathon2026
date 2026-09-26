@@ -1,10 +1,9 @@
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -17,47 +16,48 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { askHelper, checkHealth, resolveServerUrl, type HelperAnswer, type Turn } from "../src/api";
 import { getPendingAttachment } from "../src/attachments";
-import { AnswerCard, spokenText } from "../src/components/AnswerCard";
+import { AnswerCard } from "../src/components/AnswerCard";
+import { Chip, Chips, HelperBubble, TypingBubble, UserBubble } from "../src/components/Chat";
+import { PressableScale } from "../src/components/motion";
+import Reanimated, { useAnimatedStyle, withSpring, withTiming } from "react-native-reanimated";
+import { CallingCard } from "../src/components/CallingCard";
+import { ClarifyCard } from "../src/components/ClarifyCard";
+import { asksForGuardian } from "../src/guardian";
 import { EmergencyPanel } from "../src/components/EmergencyPanel";
 import { soundsUrgent } from "../src/emergency";
 import { Icon } from "../src/components/Icon";
 import { BigButton, QuietButton, TopBar, Txt, tap } from "../src/components/ui";
 import { addToHistory } from "../src/history";
-import { useSettings } from "../src/settings";
-import { speak, stopSpeaking } from "../src/speech";
+import { chatOpener, thinkingLines } from "../src/personality";
+import { callName, useSettings } from "../src/settings";
+import { setCloudVoice, speak, spokenText, stopSpeaking } from "../src/speech";
 import { colors, radius, useFontSizes } from "../src/theme";
 import { useVoiceInput } from "../src/useVoiceInput";
 
-type Entry = { question: string; answer?: HelperAnswer; error?: string };
+/** `call`: they asked for their guardian by name, so Helper calls straight away without asking the server. */
+type Entry = { question: string; answer?: HelperAnswer; error?: string; call?: boolean };
 
 const SUGGESTIONS = [
-  "How do I make the writing bigger on my phone?",
-  "Someone called saying they are from my bank. What should I do?",
-  "How do I video call my family?",
+  "Πώς μεγαλώνω τα γράμματα στο κινητό μου;",
+  "Με πήρε κάποιος και είπε ότι είναι από την τράπεζα. Τι να κάνω;",
+  "Πώς κάνω βιντεοκλήση στην οικογένειά μου;",
 ];
 
-/** A soft ring that grows and fades behind the microphone while Helper is listening. */
-function ListeningPulse() {
-  const t = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(t, { toValue: 1, duration: 1400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [t]);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.pulse,
-        {
-          opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
-          transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.8] }) }],
-        },
-      ]}
-    />
-  );
+/** A ring behind the microphone that grows with the user's voice, so they can see Helper hears them. */
+function VoiceRing({ level }: { level: number }) {
+  const style = useAnimatedStyle(() => ({
+    opacity: withTiming(0.35 + level * 0.4, { duration: 90 }),
+    transform: [{ scale: withSpring(1.15 + level * 0.9, { damping: 12, stiffness: 220 }) }],
+  }));
+  return <Reanimated.View pointerEvents="none" style={[styles.pulse, style]} />;
+}
+
+/** The dock button's colour glides between ready (teal), listening (orange) and busy (grey). */
+function TalkBackground({ mode }: { mode: 0 | 1 | 2 }) {
+  const style = useAnimatedStyle(() => ({
+    backgroundColor: withTiming([colors.primary, colors.listening, colors.muted][mode], { duration: 250 }),
+  }));
+  return <Reanimated.View style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }, style]} />;
 }
 
 export default function Ask() {
@@ -66,6 +66,7 @@ export default function Ask() {
   const fonts = useFontSizes();
   const serverUrl = resolveServerUrl(settings.serverUrl);
   const [attachment] = useState(getPendingAttachment);
+  const [opener] = useState(() => chatOpener(callName(settings)));
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [typed, setTyped] = useState("");
@@ -73,13 +74,22 @@ export default function Ask() {
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [sttAvailable, setSttAvailable] = useState<boolean | null>(null);
   const [serverDown, setServerDown] = useState(false);
-  const voice = useVoiceInput(serverUrl, settings.language);
+  // Shown under the talk button after a voice attempt that didn't go through (nothing heard, cancelled).
+  const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const voice = useVoiceInput(serverUrl, settings.language, {
+    // They stopped talking: send it, as if they had tapped the button.
+    onSilence: () => finishAndSend(),
+    onNothingHeard: () => {
+      voice.cancel();
+      setVoiceHint("Δεν άκουσα τίποτα. Πάτα το κουμπί όταν θες.");
+    },
+  });
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const started = useRef(false);
 
   const send = useCallback(
-    async (question: string) => {
+    async (question: string, detail: "short" | "full" = settings.detail) => {
       const q = question.trim();
       if (!q || loading) return;
       stopSpeaking();
@@ -88,12 +98,16 @@ export default function Ask() {
       setTyping(false);
       // A failed last question is replaced rather than left above the new attempt.
       const base = entries.at(-1)?.error ? entries.slice(0, -1) : entries;
+      if (asksForGuardian(q, settings)) {
+        setEntries([...base, { question: q, call: true }]);
+        return;
+      }
       const index = base.length;
       const history: Turn[] = base
         .filter((e) => e.answer)
         .flatMap((e) => [
           { role: "user" as const, text: e.question },
-          { role: "assistant" as const, text: spokenText(e.answer!) },
+          { role: "assistant" as const, text: spokenText(e.answer!, settings.language) },
         ]);
       setEntries([...base, { question: q }]);
       setLoading(true);
@@ -104,18 +118,31 @@ export default function Ask() {
           image: attachment?.kind === "image" ? { data: attachment.base64, mediaType: "image/jpeg" } : undefined,
           contextText: attachment?.kind === "text" ? attachment.text : undefined,
           name: settings.name || undefined,
+          nickname: settings.nickname || undefined,
+          guardianName: settings.familyName || undefined,
           language: settings.language,
+          detail,
         });
         setEntries((prev) => prev.map((e, i) => (i === index ? { ...e, answer } : e)));
-        addToHistory(q, answer).catch(() => {});
+        // Feel the verdict before reading it: a warning buzz for danger, a light tick for good news.
+        const feel = answer.emergency || answer.verdict === "danger"
+          ? Haptics.NotificationFeedbackType.Error
+          : answer.verdict === "caution"
+            ? Haptics.NotificationFeedbackType.Warning
+            : answer.verdict === "safe"
+              ? Haptics.NotificationFeedbackType.Success
+              : null;
+        if (feel) Haptics.notificationAsync(feel).catch(() => {});
+        // Check-first questions ("Did you mean to send this?") aren't worth keeping.
+        if (!answer.clarify) addToHistory(q, answer).catch(() => {});
         if (settings.answerMode !== "text") {
           setSpeakingIndex(index);
-          speak(spokenText(answer), settings, () => setSpeakingIndex((cur) => (cur === index ? null : cur)));
+          speak(spokenText(answer, settings.language), settings, () => setSpeakingIndex((cur) => (cur === index ? null : cur)));
         }
       } catch (e) {
         const error =
           e instanceof TypeError
-            ? "I couldn't reach Helper just now. Please try again in a moment."
+            ? "Ωχ, το ίντερνετ παίζει κρυφτό. Δοκιμάζουμε ξανά σε λίγο;"
             : e instanceof Error
               ? e.message
               : String(e);
@@ -136,22 +163,34 @@ export default function Ask() {
     try {
       await voice.start();
     } catch (e) {
-      Alert.alert("Microphone", e instanceof Error ? e.message : String(e));
+      Alert.alert("Μικρόφωνο", e instanceof Error ? e.message : String(e));
     }
   }, [voice]);
+
+  const finishAndSend = async () => {
+    try {
+      const text = await voice.finish();
+      if (text === null) return; // Cancelled while it was being written down.
+      if (text) send(text);
+      else setVoiceHint("Δεν το έπιασα. Πάτα το κουμπί και ξαναπές το.");
+    } catch (e) {
+      Alert.alert("Συγγνώμη", e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const cancelVoice = () => {
+    tap();
+    voice.cancel();
+    setVoiceHint("Εντάξει, δεν το έστειλα. Πάτα το κουμπί όταν θες.");
+  };
 
   const onTalkPress = async () => {
     tap();
     if (voice.status === "listening") {
-      try {
-        const text = await voice.finish();
-        if (text) send(text);
-        else Alert.alert("I didn't hear anything", "Tap the button and try again.");
-      } catch (e) {
-        Alert.alert("Sorry", e instanceof Error ? e.message : String(e));
-      }
+      finishAndSend();
       return;
     }
+    setVoiceHint(null);
     // Without server speech-to-text, the keyboard's own dictation microphone does the listening.
     if (sttAvailable) startListening();
     else startTyping();
@@ -163,6 +202,7 @@ export default function Ask() {
         .then((health) => {
           setServerDown(false);
           setSttAvailable(health.stt);
+          setCloudVoice(health.tts ? serverUrl : null);
           onReady?.(health.stt);
         })
         .catch(() => {
@@ -191,16 +231,16 @@ export default function Ask() {
   const transcribing = voice.status === "transcribing";
   const busy = loading || transcribing;
   const talkLabel = listening
-    ? "Listening… tap when done"
+    ? "Σε ακούω… πάτα για αποστολή"
     : transcribing
-      ? "Writing down your words…"
+      ? "Γράφω αυτά που είπες…"
       : entries.length
-        ? "Ask something else"
-        : "Tap to talk";
+        ? "Ρώτα κάτι άλλο"
+        : "Πάτα και μίλα";
 
   return (
     <SafeAreaView style={styles.screen}>
-      <TopBar backLabel="Home" />
+      <TopBar backLabel="Αρχική" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           ref={scrollRef}
@@ -213,86 +253,93 @@ export default function Ask() {
               <View style={styles.row}>
                 <Icon name="wifi" size={26} color={colors.danger} />
                 <Txt size="large" bold style={{ flex: 1 }}>
-                  Helper can't connect right now
+                  Ο HelpNona δεν μπορεί να συνδεθεί τώρα
                 </Txt>
               </View>
-              <Txt>Ask the person who set up Helper to check the connection.</Txt>
+              <Txt>Ζήτα από αυτόν που έστησε τον HelpNona να ελέγξει τη σύνδεση.</Txt>
               <Txt size="small" color={colors.muted}>
-                Address: {serverUrl}
+                Διεύθυνση: {serverUrl}
               </Txt>
-              <BigButton icon="retry" label="Try again" onPress={() => connect()} />
+              <BigButton icon="retry" label="Ξαναδοκίμασε" onPress={() => connect()} />
             </View>
           )}
 
           {attachment?.kind === "image" && (
-            <View style={styles.attachment}>
-              <Image source={{ uri: attachment.uri }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
-              <Txt size="small" bold color={colors.muted}>
-                {attachment.source === "photo" ? "Your photo" : "Your screenshot"}
-              </Txt>
-            </View>
+            <Image
+              source={{ uri: attachment.uri }}
+              style={styles.sentImage}
+              resizeMode="cover"
+              accessibilityLabel={attachment.source === "photo" ? "Η φωτογραφία σου" : "Το στιγμιότυπό σου"}
+              accessibilityIgnoresInvertColors
+            />
           )}
           {attachment?.kind === "text" && (
-            <View style={styles.attachment}>
-              <Txt size="small" bold color={colors.muted}>
-                What you copied
+            <UserBubble>
+              <Txt size="small" bold color="#CFE3E0">
+                Αντιγραμμένο μήνυμα
               </Txt>
-              <Txt>{attachment.text.length > 400 ? attachment.text.slice(0, 400) + "…" : attachment.text}</Txt>
-            </View>
+              <Txt color={colors.primaryText}>
+                {attachment.text.length > 400 ? attachment.text.slice(0, 400) + "…" : attachment.text}
+              </Txt>
+            </UserBubble>
           )}
 
           {entries.length === 0 && !attachment && !listening && !loading && (
-            <View style={{ gap: 12 }}>
-              <Txt size="title" bold header>
-                What would you like to know?
-              </Txt>
-              <Txt color={colors.muted}>Tap the big button below and speak, or try one of these:</Txt>
-              {SUGGESTIONS.map((s) => (
-                <Pressable
-                  key={s}
-                  onPress={() => send(s)}
-                  style={({ pressed }) => [styles.suggestion, pressed && { opacity: 0.7 }]}
-                  accessibilityRole="button"
-                >
-                  <Icon name="chat" size={24} color={colors.primary} />
-                  <Txt style={{ flex: 1 }}>{s}</Txt>
-                </Pressable>
-              ))}
+            <View style={{ gap: 8 }}>
+              <HelperBubble>
+                <Txt size="large">{opener}</Txt>
+              </HelperBubble>
+              <Chips>
+                {SUGGESTIONS.map((s) => (
+                  <Chip key={s} label={s} onPress={() => send(s)} />
+                ))}
+              </Chips>
             </View>
           )}
 
           {listening && entries.length === 0 && (
             <View style={styles.listeningHint}>
               <Txt size="title" bold center header>
-                I'm listening
+                Σε ακούω
               </Txt>
               <Txt size="large" center color={colors.muted}>
-                Say your question, then tap the button below.
+                Πες μου τι χρειάζεσαι και μετά πάτα το κουμπί από κάτω.
               </Txt>
             </View>
           )}
 
           {entries.map((entry, i) => (
-            <View key={i} style={{ gap: 14 }}>
-              <View style={styles.question}>
-                <Txt size="small" bold color={colors.muted}>
-                  You asked
-                </Txt>
-                <Txt size="large">{entry.question}</Txt>
-              </View>
+            <View key={i} style={{ gap: 10 }}>
+              <UserBubble>
+                <Txt color={colors.primaryText}>{entry.question}</Txt>
+              </UserBubble>
               {(entry.answer?.emergency || (entry.error && soundsUrgent(entry.question))) && <EmergencyPanel />}
-              {entry.answer && (
+              {entry.answer?.clarify ? (
+                <ClarifyCard answer={entry.answer} onChoose={i === entries.length - 1 && !loading ? (c) => send(c) : undefined} />
+              ) : entry.answer ? (
                 <AnswerCard
                   answer={entry.answer}
                   speaking={speakingIndex === i}
                   onSpeakingChange={(on) => setSpeakingIndex(on ? i : null)}
+                  onMore={
+                    settings.detail === "short" && i === entries.length - 1 && !loading && !entry.answer.emergency
+                      ? () => send("Πες μου κι άλλα γι' αυτό.", "full")
+                      : undefined
+                  }
+                  imageUri={attachment?.kind === "image" ? attachment.uri : undefined}
                 />
-              )}
+              ) : null}
+              {entry.call && <CallingCard first announce active={i === entries.length - 1} />}
+              {entry.answer?.guardianHelp === "call" && <CallingCard active={i === entries.length - 1} />}
               {entry.error && (
-                <View style={styles.notice}>
-                  <Txt>{entry.error}</Txt>
+                <View style={{ gap: 8 }}>
+                  <HelperBubble>
+                    <Txt>{entry.error}</Txt>
+                  </HelperBubble>
                   {i === entries.length - 1 && !loading && (
-                    <BigButton icon="retry" label="Try again" onPress={() => send(entry.question)} />
+                    <Chips>
+                      <Chip primary icon="retry" label="Ξαναδοκίμασε" onPress={() => send(entry.question)} />
+                    </Chips>
                   )}
                 </View>
               )}
@@ -300,12 +347,10 @@ export default function Ask() {
           ))}
 
           {loading && (
-            <View style={styles.thinking}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Txt size="large" bold>
-                {attachment ? "Looking at it…" : "Thinking…"}
-              </Txt>
-            </View>
+            <TypingBubble
+              label={attachment ? "Ο HelpNona το κοιτάζει" : "Ο HelpNona σκέφτεται"}
+              lines={thinkingLines(Boolean(attachment))}
+            />
           )}
         </ScrollView>
 
@@ -314,7 +359,7 @@ export default function Ask() {
             <>
               {!sttAvailable && (
                 <Txt size="small" color={colors.muted} center>
-                  To speak, tap the microphone on the keyboard.
+                  Για να μιλήσεις, πάτα το μικρόφωνο στο πληκτρολόγιο.
                 </Txt>
               )}
               <View style={styles.typeRow}>
@@ -322,55 +367,76 @@ export default function Ask() {
                   ref={inputRef}
                   value={typed}
                   onChangeText={setTyped}
-                  placeholder="Write your question"
+                  placeholder="Γράψε την ερώτησή σου"
                   placeholderTextColor="#7C7F85"
-                  accessibilityLabel="Your question"
+                  accessibilityLabel="Η ερώτησή σου"
                   style={[styles.input, { fontSize: fonts.body }]}
                   returnKeyType="send"
                   onSubmitEditing={() => send(typed)}
                 />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Send"
+                  accessibilityLabel="Αποστολή"
                   onPress={() => send(typed)}
                   disabled={!typed.trim() || loading}
                   style={[styles.sendButton, (!typed.trim() || loading) && { opacity: 0.4 }]}
                 >
                   <Txt bold color={colors.primaryText}>
-                    Send
+                    Αποστολή
                   </Txt>
                 </Pressable>
               </View>
-              {sttAvailable ? <QuietButton icon="mic" label="Speak instead" onPress={() => setTyping(false)} /> : null}
+              {sttAvailable ? <QuietButton icon="mic" label="Καλύτερα με φωνή" onPress={() => setTyping(false)} /> : null}
             </>
           ) : (
             <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={listening ? "Stop listening and send my question" : talkLabel}
-                accessibilityState={{ busy, disabled: busy }}
-                onPress={onTalkPress}
-                disabled={busy}
-                style={({ pressed }) => [
-                  styles.talk,
-                  listening && { backgroundColor: colors.listening },
-                  busy && { backgroundColor: colors.muted },
-                  pressed && { transform: [{ scale: 0.98 }] },
-                ]}
-              >
-                <View style={styles.talkIcon}>
-                  {listening && <ListeningPulse />}
-                  {transcribing ? (
-                    <ActivityIndicator color={colors.primary} />
-                  ) : (
-                    <Icon name={listening ? "stop" : "mic"} size={30} color={listening ? colors.listening : colors.primary} />
-                  )}
-                </View>
-                <Txt size="large" bold color={colors.primaryText} style={{ flexShrink: 1 }}>
-                  {talkLabel}
+              {listening ? (
+                <Txt size="small" color={colors.muted} center>
+                  Θα το στείλω μόλις σταματήσεις να μιλάς.
                 </Txt>
-              </Pressable>
-              {!listening && !busy && <QuietButton icon="keyboard" label="Type instead" onPress={startTyping} />}
+              ) : voiceHint && !busy ? (
+                <Txt size="small" color={colors.muted} center>
+                  {voiceHint}
+                </Txt>
+              ) : null}
+              <View style={styles.talkRow}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={listening ? "Σταμάτα να ακούς και στείλε την ερώτησή μου" : talkLabel}
+                  accessibilityState={{ busy, disabled: busy }}
+                  onPress={onTalkPress}
+                  disabled={busy}
+                  scaleTo={0.97}
+                  style={[styles.talk, { flex: 1 }]}
+                >
+                  <TalkBackground mode={listening ? 1 : busy ? 2 : 0} />
+                  <View style={styles.talkIcon}>
+                    {listening && <VoiceRing level={voice.level} />}
+                    {transcribing ? (
+                      <ActivityIndicator color={colors.primary} />
+                    ) : (
+                      <Icon name={listening ? "stop" : "mic"} size={30} color={listening ? colors.listening : colors.primary} />
+                    )}
+                  </View>
+                  <Txt size="large" bold color={colors.primaryText} style={{ flexShrink: 1 }}>
+                    {talkLabel}
+                  </Txt>
+                </PressableScale>
+                {listening || transcribing ? (
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Άκυρο. Μην το στείλεις."
+                    onPress={cancelVoice}
+                    style={styles.cancel}
+                  >
+                    <Icon name="close" size={28} color={colors.danger} />
+                    <Txt size="small" bold color={colors.danger}>
+                      Άκυρο
+                    </Txt>
+                  </PressableScale>
+                ) : null}
+              </View>
+              {!listening && !busy && <QuietButton icon="keyboard" label="Καλύτερα γραπτά" onPress={startTyping} />}
             </>
           )}
         </View>
@@ -383,32 +449,28 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 16 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  attachment: { gap: 8, backgroundColor: colors.card, borderRadius: radius.md, padding: 12, borderWidth: 1, borderColor: colors.border },
-  image: { width: "100%", height: 220, borderRadius: radius.sm, backgroundColor: colors.sunken },
-  question: { alignSelf: "flex-end", maxWidth: "88%", backgroundColor: colors.sunken, borderRadius: 20, borderBottomRightRadius: 6, padding: 14, gap: 2 },
-  thinking: { flexDirection: "row", gap: 14, alignItems: "center", padding: 18, backgroundColor: colors.card, borderRadius: radius.md },
+  sentImage: { alignSelf: "flex-end", width: "70%", aspectRatio: 0.8, borderRadius: 22, borderBottomRightRadius: 6, backgroundColor: colors.sunken },
   notice: { backgroundColor: colors.verdict.danger.bg, borderRadius: radius.md, padding: 16, gap: 10 },
-  suggestion: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: colors.card,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    minHeight: 64,
-  },
   listeningHint: { paddingVertical: 48, gap: 10 },
   dock: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6, gap: 6, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   talk: {
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-    backgroundColor: colors.primary,
     borderRadius: radius.lg,
     minHeight: 88,
     paddingHorizontal: 16,
+  },
+  talkRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
+  cancel: {
+    width: 88,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
   },
   talkIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" },
   pulse: { position: "absolute", width: 60, height: 60, borderRadius: 30, backgroundColor: colors.card },

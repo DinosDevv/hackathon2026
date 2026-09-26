@@ -30,7 +30,7 @@ export async function pickScreenshot(): Promise<Attachment | null> {
 /** Takes a photo of a letter, sign or another screen. */
 export async function takePhoto(): Promise<Attachment | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) throw new Error("Helper needs the camera to read things for you. You can allow it in Settings.");
+  if (!permission.granted) throw new Error("Ο HelpNona χρειάζεται την κάμερα για να σου διαβάζει πράγματα. Μπορείς να την επιτρέψεις από τις Ρυθμίσεις του κινητού.");
   const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 1 });
   if (result.canceled || !result.assets[0]) return null;
   return prepareImage(result.assets[0], "photo");

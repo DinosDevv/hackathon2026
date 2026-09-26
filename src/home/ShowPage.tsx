@@ -1,8 +1,10 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { pickScreenshot, readClipboard, setPendingAttachment, takePhoto, type Attachment } from "../attachments";
+import { EMERGENCY_BUTTON_SPACE } from "../components/EmergencyButton";
+import { PressableScale } from "../components/motion";
 import { IconBadge, Txt, tap } from "../components/ui";
 import type { IconName } from "../components/Icon";
 import { colors, radius } from "../theme";
@@ -11,23 +13,23 @@ import { colors, radius } from "../theme";
 const SOURCES = {
   photo: {
     icon: "camera",
-    label: "Take a photo",
-    hint: "Of a letter, a bill or a sign",
-    question: "Please read this to me and explain what it means and what I should do.",
+    label: "Βγάλε φωτογραφία",
+    hint: "Ένα γράμμα, έναν λογαριασμό ή μια πινακίδα",
+    question: "Διάβασέ μου το και εξήγησέ μου τι σημαίνει και τι πρέπει να κάνω.",
     get: takePhoto,
   },
   screenshot: {
     icon: "screenshot",
-    label: "Choose a screenshot",
-    hint: "Of a message, an email or a website",
-    question: "What is this? Is it safe, and what should I do?",
+    label: "Διάλεξε στιγμιότυπο οθόνης",
+    hint: "Ένα μήνυμα, ένα email ή μια ιστοσελίδα",
+    question: "Τι είναι αυτό; Είναι ασφαλές και τι να κάνω;",
     get: pickScreenshot,
   },
   copied: {
     icon: "paste",
-    label: "Check what I copied",
-    hint: "A message or a link you copied",
-    question: "Is this message or link safe? Could it be a scam? What should I do?",
+    label: "Έλεγξε αυτό που αντέγραψα",
+    hint: "Ένα μήνυμα ή ένα λινκ που αντέγραψες",
+    question: "Είναι ασφαλές αυτό το μήνυμα ή το λινκ; Μήπως είναι απάτη; Τι να κάνω;",
     get: readClipboard,
   },
 } satisfies Record<string, { icon: IconName; label: string; hint: string; question: string; get: () => Promise<Attachment | null> }>;
@@ -48,8 +50,8 @@ export function ShowPage({ width }: { width: number }) {
       if (!attachment) {
         if (key === "copied") {
           Alert.alert(
-            "Nothing copied yet",
-            "Press and hold on the message or link, tap Copy, then come back and press this button again.",
+            "Δεν έχεις αντιγράψει τίποτα",
+            "Πάτα παρατεταμένα πάνω στο μήνυμα ή στο λινκ, διάλεξε Αντιγραφή, και μετά γύρνα εδώ και πάτα ξανά αυτό το κουμπί.",
           );
         }
         return;
@@ -57,7 +59,7 @@ export function ShowPage({ width }: { width: number }) {
       setPendingAttachment(attachment);
       router.push({ pathname: "/ask", params: { question: SOURCES[key].question } });
     } catch (e) {
-      Alert.alert("Something went wrong", e instanceof Error ? e.message : String(e));
+      Alert.alert("Κάτι πήγε στραβά", e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -65,23 +67,23 @@ export function ShowPage({ width }: { width: number }) {
 
   return (
     <ScrollView style={{ width }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
-      <Txt size="title" bold header>
-        Show me something
+      <Txt size="title" bold header style={{ paddingRight: EMERGENCY_BUTTON_SPACE - 20 }}>
+        Δείξε μου κάτι
       </Txt>
       <Txt size="large" color={colors.muted}>
-        I'll tell you what it is, if it's safe, and what to do.
+        Θα σου πω τι είναι, αν είναι ασφαλές και τι να κάνεις.
       </Txt>
       {(Object.keys(SOURCES) as Source[]).map((key) => {
         const s = SOURCES[key];
         return (
-          <Pressable
+          <PressableScale
             key={key}
             accessibilityRole="button"
             accessibilityLabel={`${s.label}. ${s.hint}`}
             accessibilityState={{ busy: busy === key }}
             disabled={busy !== null}
             onPress={() => start(key)}
-            style={({ pressed }) => [styles.card, pressed && { opacity: 0.75, transform: [{ scale: 0.985 }] }]}
+            style={styles.card}
           >
             <IconBadge name={s.icon} size={72} />
             <View style={{ flex: 1, gap: 2 }}>
@@ -91,7 +93,7 @@ export function ShowPage({ width }: { width: number }) {
               <Txt color={colors.muted}>{s.hint}</Txt>
             </View>
             {busy === key ? <ActivityIndicator color={colors.primary} /> : null}
-          </Pressable>
+          </PressableScale>
         );
       })}
     </ScrollView>

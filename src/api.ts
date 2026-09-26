@@ -9,8 +9,16 @@ export type HelperAnswer = {
   steps: string[];
   draftReply: string;
   tellFamily: boolean;
-  /** Missing on answers saved before this field existed. */
+  /** Missing on answers saved before these fields existed. */
   emergency?: boolean;
+  /** Helper thinks the input was a mistake and asks a quick question instead of answering. */
+  clarify?: boolean;
+  /** Short replies the user can tap when clarify is true. */
+  choices?: string[];
+  /** "text": Helper can't fix this, offer guardianMessage to the guardian. "call": they asked to call the guardian. */
+  guardianHelp?: "none" | "text" | "call";
+  /** The text to send the guardian, written as the user. */
+  guardianMessage?: string;
 };
 
 export type Turn = { role: "user" | "assistant"; text: string };
@@ -21,7 +29,10 @@ export type AskRequest = {
   contextText?: string;
   history?: Turn[];
   name?: string;
+  nickname?: string;
+  guardianName?: string;
   language?: string;
+  detail?: "short" | "full";
 };
 
 const SERVER_PORT = 3001;
@@ -39,13 +50,13 @@ export function resolveServerUrl(override: string): string {
 async function readError(res: Response) {
   try {
     const body = await res.json();
-    return body.error ?? `Server error ${res.status}`;
+    return body.error ?? `Σφάλμα server (${res.status})`;
   } catch {
-    return `Server error ${res.status}`;
+    return `Σφάλμα server (${res.status})`;
   }
 }
 
-export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; stt: boolean; model: string }> {
+export async function checkHealth(baseUrl: string): Promise<{ ok: boolean; stt: boolean; tts?: boolean; model: string; lastLookAt: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {

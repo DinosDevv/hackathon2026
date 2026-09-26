@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +18,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, radius, useFontSizes } from "../theme";
 import { Icon, type IconName } from "./Icon";
+import Reanimated, { ZoomIn } from "react-native-reanimated";
+import { PressableScale } from "./motion";
 
 type Size = keyof ReturnType<typeof useFontSizes>;
 
@@ -62,11 +63,11 @@ export function Txt({
 }
 
 /** Every screen but Home gets a big, labelled Back button instead of a small arrow. */
-export function TopBar({ backLabel = "Back", right }: { backLabel?: string; right?: ReactNode }) {
+export function TopBar({ backLabel = "Πίσω", right }: { backLabel?: string; right?: ReactNode }) {
   const router = useRouter();
   return (
     <View style={styles.topBar}>
-      <Pressable
+      <PressableScale
         accessibilityRole="button"
         accessibilityLabel={backLabel}
         hitSlop={8}
@@ -75,13 +76,13 @@ export function TopBar({ backLabel = "Back", right }: { backLabel?: string; righ
           if (router.canGoBack()) router.back();
           else router.replace("/");
         }}
-        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        style={styles.backButton}
       >
         <Icon name="back" size={22} color={colors.primary} />
         <Txt bold color={colors.primary}>
           {backLabel}
         </Txt>
-      </Pressable>
+      </PressableScale>
       <View style={{ flex: 1 }} />
       {right}
     </View>
@@ -162,7 +163,7 @@ export function BigButton({
   const fg = solid ? colors.primaryText : variant === "row" ? colors.text : colors.primary;
   const bg = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : colors.card;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={hint ? `${label}. ${hint}` : label}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
@@ -171,11 +172,10 @@ export function BigButton({
         tap();
         onPress();
       }}
-      style={({ pressed }) => [
+      style={[
         styles.button,
         variant === "row" && styles.rowButton,
         { backgroundColor: bg, borderColor: solid ? bg : colors.border },
-        pressed && styles.pressed,
         disabled && { opacity: 0.45 },
         style,
       ]}
@@ -193,7 +193,7 @@ export function BigButton({
         ) : null}
       </View>
       {loading ? <ActivityIndicator color={fg} /> : variant === "row" ? <Icon name="forward" size={20} color={colors.muted} /> : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -205,20 +205,20 @@ export function QuietButton({ label, icon, onPress, color = colors.primary }: {
   color?: string;
 }) {
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={() => {
         tap();
         onPress();
       }}
-      style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}
+      style={styles.quiet}
     >
       {icon ? <Icon name={icon} size={22} color={color} /> : null}
       <Txt bold color={color}>
         {label}
       </Txt>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -236,7 +236,7 @@ export function Choice<T extends string | number | boolean>({
       {options.map((o) => {
         const selected = o.value === value;
         return (
-          <Pressable
+          <PressableScale
             key={String(o.value)}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
@@ -247,11 +247,15 @@ export function Choice<T extends string | number | boolean>({
             }}
             style={[styles.choice, selected && styles.choiceSelected]}
           >
-            {selected ? <Icon name="check" size={20} color={colors.primaryText} /> : null}
+            {selected ? (
+              <Reanimated.View entering={ZoomIn.duration(200)}>
+                <Icon name="check" size={20} color={colors.primaryText} />
+              </Reanimated.View>
+            ) : null}
             <Txt bold center color={selected ? colors.primaryText : colors.text}>
               {o.label}
             </Txt>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>
@@ -301,7 +305,6 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     backgroundColor: colors.primarySoft,
   },
-  pressed: { opacity: 0.7, transform: [{ scale: 0.985 }] },
   badge: { alignItems: "center", justifyContent: "center" },
   button: {
     minHeight: 68,

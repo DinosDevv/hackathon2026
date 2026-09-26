@@ -1,21 +1,24 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
-import { VerdictLabel, spokenText } from "../src/components/AnswerCard";
+import { Alert, StyleSheet, View } from "react-native";
+import Reanimated, { LinearTransition } from "react-native-reanimated";
+import { VerdictLabel } from "../src/components/AnswerCard";
+import { HelperFace } from "../src/components/HelperFace";
 import { Icon } from "../src/components/Icon";
-import { BigButton, IconBadge, QuietButton, Screen, Txt, tap } from "../src/components/ui";
+import { PressableScale, appear } from "../src/components/motion";
+import { BigButton, QuietButton, Screen, Txt, tap } from "../src/components/ui";
 import { clearHistory, loadHistory, type HistoryEntry } from "../src/history";
 import { useSettings } from "../src/settings";
-import { speak } from "../src/speech";
+import { speak, spokenText } from "../src/speech";
 import { colors, radius } from "../src/theme";
 
 function friendlyDate(iso: string) {
   const date = new Date(iso);
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = date.toLocaleTimeString("el-GR", { hour: "numeric", minute: "2-digit" });
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000);
-  if (days === 0) return `Today at ${time}`;
-  if (days === 1) return `Yesterday at ${time}`;
-  return `${date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} at ${time}`;
+  if (days === 0) return `Σήμερα στις ${time}`;
+  if (days === 1) return `Χθες στις ${time}`;
+  return `${date.toLocaleDateString("el-GR", { weekday: "long", day: "numeric", month: "long" })} στις ${time}`;
 }
 
 export default function History() {
@@ -31,11 +34,14 @@ export default function History() {
 
   if (entries.length === 0) {
     return (
-      <Screen title="Past answers">
+      <Screen title="Παλιές απαντήσεις">
         <View style={styles.empty}>
-          <IconBadge name="history" size={88} />
-          <Txt size="large" center>
-            Nothing here yet. When you ask Helper something, the answer is saved here so you can read it again.
+          <HelperFace size={96} />
+          <Txt size="large" bold center>
+            Τίποτα ακόμα. Καθαρό μητρώο!
+          </Txt>
+          <Txt center color={colors.muted}>
+            Όταν με ρωτάς κάτι, κρατάω την απάντηση εδώ για να τη διαβάσεις ξανά.
           </Txt>
         </View>
       </Screen>
@@ -43,56 +49,58 @@ export default function History() {
   }
 
   return (
-    <Screen title="Past answers">
-      <Txt color={colors.muted}>Tap an answer to read it again.</Txt>
+    <Screen title="Παλιές απαντήσεις">
+      <Txt color={colors.muted}>Πάτα μια απάντηση για να τη διαβάσεις ξανά.</Txt>
       {entries.map((e) => {
         const v = colors.verdict[e.answer.verdict];
         const isOpen = open === e.id;
         return (
-          <Pressable
-            key={e.id}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: isOpen }}
-            onPress={() => {
-              tap();
-              setOpen(isOpen ? null : e.id);
-            }}
-            style={[styles.item, { borderLeftColor: v.fg }]}
-          >
-            <View style={styles.itemHeader}>
-              <VerdictLabel verdict={e.answer.verdict} />
-              <Icon name={isOpen ? "close" : "forward"} size={18} color={colors.muted} />
-            </View>
-            <Txt size="large" bold>
-              {e.answer.headline}
-            </Txt>
-            <Txt color={colors.muted}>You asked: {e.question}</Txt>
-            <Txt size="small" color={colors.muted}>
-              {friendlyDate(e.date)}
-            </Txt>
-            {isOpen && (
-              <View style={styles.detail}>
-                <Txt>{e.answer.explanation}</Txt>
-                {e.answer.steps.map((s, i) => (
-                  <Txt key={i}>
-                    {i + 1}. {s}
-                  </Txt>
-                ))}
-                <BigButton icon="speaker" label="Read it to me" onPress={() => speak(spokenText(e.answer), settings)} />
+          <Reanimated.View key={e.id} layout={LinearTransition.duration(250)}>
+            <PressableScale
+              scaleTo={0.98}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isOpen }}
+              onPress={() => {
+                tap();
+                setOpen(isOpen ? null : e.id);
+              }}
+              style={[styles.item, { borderLeftColor: v.fg }]}
+            >
+              <View style={styles.itemHeader}>
+                <VerdictLabel verdict={e.answer.verdict} />
+                <Icon name={isOpen ? "close" : "forward"} size={18} color={colors.muted} />
               </View>
-            )}
-          </Pressable>
+              <Txt size="large" bold>
+                {e.answer.headline}
+              </Txt>
+              <Txt color={colors.muted}>Ρώτησες: {e.question}</Txt>
+              <Txt size="small" color={colors.muted}>
+                {friendlyDate(e.date)}
+              </Txt>
+              {isOpen && (
+                <Reanimated.View entering={appear()} style={styles.detail}>
+                  <Txt>{e.answer.explanation}</Txt>
+                  {e.answer.steps.map((s, i) => (
+                    <Txt key={i}>
+                      {i + 1}. {s}
+                    </Txt>
+                  ))}
+                  <BigButton icon="speaker" label="Διάβασέ το μου" onPress={() => speak(spokenText(e.answer, settings.language), settings)} />
+                </Reanimated.View>
+              )}
+            </PressableScale>
+          </Reanimated.View>
         );
       })}
       <QuietButton
         icon="trash"
-        label="Delete all past answers"
+        label="Σβήσε όλες τις παλιές απαντήσεις"
         color={colors.danger}
         onPress={() =>
-          Alert.alert("Delete all past answers?", "This can't be undone.", [
-            { text: "Cancel", style: "cancel" },
+          Alert.alert("Να σβηστούν όλες οι παλιές απαντήσεις;", "Δεν γίνεται αναίρεση.", [
+            { text: "Άκυρο", style: "cancel" },
             {
-              text: "Delete",
+              text: "Διαγραφή",
               style: "destructive",
               onPress: async () => {
                 await clearHistory();
